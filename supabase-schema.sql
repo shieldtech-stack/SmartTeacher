@@ -4,7 +4,8 @@
 -- 1. Users & Profiles
 CREATE TABLE profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    full_name TEXT NOT NULL,
+    full_name TEXT,
+    email TEXT,
     school_name TEXT,
     country_code VARCHAR(10) DEFAULT 'KE',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
