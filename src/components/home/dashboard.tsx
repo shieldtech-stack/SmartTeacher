@@ -4,11 +4,10 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, FileText, FolderUp, GraduationCap, Sparkles, Wand2, BookOpenCheck, Wrench, CloudOff, Cloud } from "lucide-react";
-import { seedIfEmpty } from "@/lib/db/local-store";
 import { listSchemes, listPlans, listNotes, deleteScheme, deletePlan, deleteNote } from "@/lib/db/store";
-import type { SchemeOfWork, LessonPlan, LessonNote } from "@/lib/types";
-import { loadSettings } from "@/lib/settings";
-import { getDataMode } from "@/lib/settings";
+import type { ProviderSettings, SchemeOfWork, LessonPlan, LessonNote } from "@/lib/types";
+import { DEFAULT_SETTINGS } from "@/lib/types";
+import { loadSettings, getDataMode, type DataMode } from "@/lib/settings";
 import { pendingSyncCount, deleteRemoteDocument } from "@/lib/offline/sync";
 import { useOnline } from "@/hooks/use-online";
 import { formatDate } from "@/lib/utils";
@@ -33,6 +32,13 @@ export function Dashboard() {
   const [recent, setRecent] = React.useState<Recent[]>([]);
   const [pending, setPending] = React.useState(0);
   const [ready, setReady] = React.useState(false);
+  const [dataMode, setDataModeState] = React.useState<DataMode>("local");
+  const [settings, setSettings] = React.useState<ProviderSettings>(DEFAULT_SETTINGS);
+
+  React.useEffect(() => {
+    setDataModeState(getDataMode());
+    setSettings(loadSettings());
+  }, []);
 
   const refresh = React.useCallback(async () => {
     const [schemes, plans, notes] = await Promise.all([listSchemes(), listPlans(), listNotes()]);
@@ -47,7 +53,6 @@ export function Dashboard() {
 
   React.useEffect(() => {
     (async () => {
-      await seedIfEmpty();
       setPending(await pendingSyncCount());
       await refresh();
       setReady(true);
@@ -61,9 +66,6 @@ export function Dashboard() {
     toast({ description: "Document deleted." });
     refresh();
   };
-
-  const settings = loadSettings();
-  const dataMode = getDataMode();
 
   return (
     <div className="space-y-6">

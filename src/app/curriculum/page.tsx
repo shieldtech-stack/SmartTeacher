@@ -1,4 +1,5 @@
 import { CurriculumWizard } from "@/components/curriculum-wizard";
+import { CurriculumImporter } from "@/components/curriculum/curriculum-importer";
 
 export default function CurriculumPage() {
   return (
@@ -10,6 +11,7 @@ export default function CurriculumPage() {
         </p>
       </div>
       <CurriculumWizard />
+      <CurriculumImporter />
     </div>
   );
 }

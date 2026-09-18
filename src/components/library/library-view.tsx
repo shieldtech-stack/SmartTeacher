@@ -4,7 +4,6 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BookOpen, ListChecks, FileText, Trash2, Plus } from "lucide-react";
-import { seedIfEmpty } from "@/lib/db/local-store";
 import { listSchemes, listPlans, listNotes, deleteScheme, deletePlan, deleteNote } from "@/lib/db/store";
 import type { SchemeOfWork, LessonPlan, LessonNote } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
@@ -12,6 +11,88 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+
+interface DocItem {
+  id: string;
+  icon: React.ReactNode;
+  title: string;
+  meta: string;
+}
+
+function ConfirmDeleteDialog({
+  deleteConfirm,
+  onCancel,
+  onConfirm,
+}: {
+  deleteConfirm: { kind: "scheme" | "plan" | "note"; id: string } | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  if (!deleteConfirm) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-card rounded-lg p-6 w-full max-w-md shadow-xl">
+        <h3 className="text-lg font-semibold mb-2">Delete this document?</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          This action cannot be undone.
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button variant="destructive" size="sm" onClick={onConfirm}>
+            <Trash2 className="h-4 w-4 mr-1" /> Yes, delete
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DocListItems({
+  items,
+  base,
+  kind,
+  onDelete,
+  emptyMsg,
+}: {
+  items: DocItem[];
+  base: string;
+  kind: "scheme" | "plan" | "note";
+  onDelete: (kind: "scheme" | "plan" | "note", id: string) => void;
+  emptyMsg: string;
+}) {
+  if (items.length === 0) {
+    return <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">{emptyMsg}</p>;
+  }
+  return (
+    <div className="space-y-2">
+      {items.map((item) => (
+        <Card key={item.id}>
+          <CardContent className="flex items-center justify-between gap-3 p-3">
+            <Link href={`${base}/${item.id}`} className="flex min-w-0 items-center gap-3">
+              {item.icon}
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{item.title}</p>
+                <p className="truncate text-xs text-muted-foreground">{item.meta}</p>
+              </div>
+            </Link>
+            <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => onDelete(kind, item.id)}>
+              <Trash2 className="h-4 w-4 text-muted-foreground" />
+            </Button>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+interface DocItem {
+  id: string;
+  icon: React.ReactNode;
+  title: string;
+  meta: string;
+}
 
 export function LibraryView() {
   const router = useRouter();
@@ -30,17 +111,25 @@ export function LibraryView() {
 
   React.useEffect(() => {
     (async () => {
-      await seedIfEmpty();
       await refresh();
       setReady(true);
     })();
   }, [refresh]);
 
+  const [deleteConfirm, setDeleteConfirm] = React.useState<{ kind: "scheme" | "plan" | "note"; id: string } | null>(null);
+
   const onDelete = async (kind: "scheme" | "plan" | "note", id: string) => {
+    setDeleteConfirm({ kind, id });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteConfirm) return;
+    const { kind, id } = deleteConfirm;
     if (kind === "scheme") await deleteScheme(id);
     if (kind === "plan") await deletePlan(id);
     if (kind === "note") await deleteNote(id);
     toast({ description: "Document deleted." });
+    setDeleteConfirm(null);
     refresh();
   };
 
@@ -90,6 +179,11 @@ export function LibraryView() {
           />
         </TabsContent>
       </Tabs>
+      <ConfirmDeleteDialog
+        deleteConfirm={deleteConfirm}
+        onCancel={() => setDeleteConfirm(null)}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }
@@ -99,42 +193,4 @@ interface DocItem {
   icon: React.ReactNode;
   title: string;
   meta: string;
-}
-
-function DocListItems({
-  items,
-  base,
-  kind,
-  onDelete,
-  emptyMsg,
-}: {
-  items: DocItem[];
-  base: string;
-  kind: "scheme" | "plan" | "note";
-  onDelete: (kind: "scheme" | "plan" | "note", id: string) => void;
-  emptyMsg: string;
-}) {
-  if (items.length === 0) {
-    return <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">{emptyMsg}</p>;
-  }
-  return (
-    <div className="space-y-2">
-      {items.map((item) => (
-        <Card key={item.id}>
-          <CardContent className="flex items-center justify-between gap-3 p-3">
-            <Link href={`${base}/${item.id}`} className="flex min-w-0 items-center gap-3">
-              {item.icon}
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{item.title}</p>
-                <p className="truncate text-xs text-muted-foreground">{item.meta}</p>
-              </div>
-            </Link>
-            <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => onDelete(kind, item.id)}>
-              <Trash2 className="h-4 w-4 text-muted-foreground" />
-            </Button>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
 }

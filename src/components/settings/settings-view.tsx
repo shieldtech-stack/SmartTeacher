@@ -174,6 +174,8 @@ export function SettingsView() {
                   <SelectItem value="offline">Offline template generator (no API key)</SelectItem>
                   <SelectItem value="openai">OpenAI (GPT-4o)</SelectItem>
                   <SelectItem value="anthropic">Anthropic (Claude)</SelectItem>
+                  <SelectItem value="google">Google Gemini (free tier)</SelectItem>
+                  <SelectItem value="openrouter">OpenRouter (100+ models)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -200,6 +202,32 @@ export function SettingsView() {
                 <div className="space-y-1.5">
                   <Label>Model</Label>
                   <Input value={settings.anthropicModel} onChange={(e) => update({ anthropicModel: e.target.value })} />
+                </div>
+              </div>
+            )}
+
+            {settings.llmProvider === "google" && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>Google API key</Label>
+                  <Input type="password" value={settings.googleKey} onChange={(e) => update({ googleKey: e.target.value })} placeholder="AIza..." />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Model</Label>
+                  <Input value={settings.googleModel} onChange={(e) => update({ googleModel: e.target.value })} placeholder="gemini-1.5-flash" />
+                </div>
+              </div>
+            )}
+
+            {settings.llmProvider === "openrouter" && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>OpenRouter API key</Label>
+                  <Input type="password" value={settings.openrouterKey} onChange={(e) => update({ openrouterKey: e.target.value })} placeholder="sk-or-v1-..." />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Model</Label>
+                  <Input value={settings.openrouterModel} onChange={(e) => update({ openrouterModel: e.target.value })} placeholder="google/gemini-flash-1.5" />
                 </div>
               </div>
             )}

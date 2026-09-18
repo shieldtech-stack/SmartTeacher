@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { UploadCloud, FileText, FileImage, Trash2, Loader2, Search, RefreshCw } from "lucide-react";
-import { seedIfEmpty } from "@/lib/db/local-store";
 import {
   addFile,
   updateFile,
@@ -42,7 +41,6 @@ export function DocumentUploader() {
 
   React.useEffect(() => {
     (async () => {
-      await seedIfEmpty();
       refresh();
     })();
   }, [refresh]);

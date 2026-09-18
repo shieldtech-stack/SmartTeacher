@@ -8,6 +8,8 @@ import type {
   Subtopic,
   WebSnippet,
 } from "@/lib/types";
+import type { SeedCurriculum } from "@/lib/curriculum/seed-data";
+import type { ImportStats } from "@/lib/curriculum/import";
 
 export interface ChunkOutput {
   index: number;
@@ -34,6 +36,39 @@ export async function uploadFile(file: File): Promise<{ wordCount: number; chunk
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || "Upload failed");
+  }
+  return res.json();
+}
+
+export interface ConvertCurriculumResult {
+  curricula: SeedCurriculum[];
+  stats: ImportStats;
+  source: "llm" | "heuristic";
+}
+
+export async function convertCurriculumFile(
+  file: File,
+  settings: ProviderSettings
+): Promise<ConvertCurriculumResult> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("settings", JSON.stringify(settings));
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 120_000);
+  let res: Response;
+  try {
+    res = await fetch("/api/curriculum/convert", { method: "POST", body: form, signal: controller.signal });
+  } catch (e) {
+    clearTimeout(timer);
+    if ((e as Error).name === "AbortError") {
+      throw new Error("Conversion timed out after 2 minutes. The PDF may be very large or scanned — try a smaller text-based PDF.");
+    }
+    throw new Error("Could not reach the server. Is the app running?");
+  }
+  clearTimeout(timer);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || "Failed to convert curriculum");
   }
   return res.json();
 }

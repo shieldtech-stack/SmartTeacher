@@ -24,14 +24,14 @@ export async function POST(req: NextRequest) {
     }
 
     const buf = Buffer.from(await file.arrayBuffer());
-    const text = ext === "pdf" ? await parsePdf(buf) : await parseDocx(buf);
+    const parsed = ext === "pdf" ? await parsePdf(buf) : await parseDocx(buf);
 
-    if (!text || !text.trim()) {
+    if (!parsed.text) {
       return NextResponse.json({ error: "No text could be extracted from this file." }, { status: 422 });
     }
 
-    const chunks = chunkText(text);
-    return NextResponse.json({ wordCount: wordCount(text), chunks });
+    const chunks = chunkText(parsed.text);
+    return NextResponse.json({ wordCount: wordCount(parsed.text), chunks });
   } catch (e) {
     console.error("Parse error", e);
     return NextResponse.json(

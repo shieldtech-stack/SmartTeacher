@@ -27,6 +27,12 @@ export interface Subtopic {
   strandId: string;
   title: string;
   learningOutcomes: string[];
+  /** optional, captured when the design lists a lesson count (e.g. "(12 lessons)") */
+  lessonCount?: number;
+  /** optional, captured from "Core Competencies to be developed:" sections */
+  coreCompetencies?: string[];
+  /** optional, captured from "The learner is guided to:" / "Suggested Learning Experiences" sections */
+  suggestedExperiences?: string[];
 }
 
 export interface CurriculumSelection {
@@ -40,6 +46,8 @@ export interface CurriculumSelection {
   gradeLevel?: string;
   subjectName?: string;
   strandName?: string;
+  weeksPerTerm?: number;
+  lessonsPerWeek?: number;
 }
 
 export interface UserFile {
@@ -109,6 +117,12 @@ export interface LessonPlan {
   assessmentMethods: string[];
   differentiationNotes: string;
   materials: string[];
+  coreCompetencies?: string[];
+  values?: string[];
+  pcis?: string[];
+  resources?: string[];
+  extendedActivity?: string;
+  reflection?: string;
   createdAt: number;
 }
 
@@ -154,11 +168,15 @@ export interface RetrievalContext {
 }
 
 export interface ProviderSettings {
-  llmProvider: "openai" | "anthropic" | "offline";
+  llmProvider: "openai" | "anthropic" | "google" | "openrouter" | "offline";
   openaiKey: string;
   openaiModel: string;
   anthropicKey: string;
   anthropicModel: string;
+  googleKey: string;
+  googleModel: string;
+  openrouterKey: string;
+  openrouterModel: string;
   embeddingProvider: "openai" | "local";
   webSearchProvider: "tavily" | "brave" | "none";
   tavilyKey: string;
@@ -173,6 +191,10 @@ export const DEFAULT_SETTINGS: ProviderSettings = {
   openaiModel: "gpt-4o",
   anthropicKey: "",
   anthropicModel: "claude-3-5-sonnet-20241022",
+  googleKey: "",
+  googleModel: "gemini-1.5-flash",
+  openrouterKey: "",
+  openrouterModel: "google/gemini-flash-1.5",
   embeddingProvider: "local",
   webSearchProvider: "none",
   tavilyKey: "",

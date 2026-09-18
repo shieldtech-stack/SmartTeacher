@@ -1,9 +1,13 @@
 export interface LlmCallOptions {
-  provider: "openai" | "anthropic";
-  openaiKey: string;
-  openaiModel: string;
-  anthropicKey: string;
-  anthropicModel: string;
+  provider: "openai" | "anthropic" | "google" | "openrouter";
+  openaiKey?: string;
+  openaiModel?: string;
+  anthropicKey?: string;
+  anthropicModel?: string;
+  googleKey?: string;
+  googleModel?: string;
+  openrouterKey?: string;
+  openrouterModel?: string;
   system: string;
   user: string;
   temperature?: number;
@@ -60,6 +64,56 @@ export async function callLlm(opts: LlmCallOptions): Promise<string> {
     if (!res.ok) throw new Error(`Anthropic API error ${res.status}: ${await res.text()}`);
     const data = (await res.json()) as { content?: { type: string; text?: string }[] };
     return data.content?.map((c) => c.text || "").join("") || "";
+  }
+
+  if (opts.provider === "google") {
+    if (!opts.googleKey) throw new Error("Google API key is not configured");
+    const body = {
+      contents: [
+        { role: "user", parts: [{ text: `${opts.system}\n\n${opts.user}` }] },
+      ],
+      generationConfig: {
+        temperature: opts.temperature ?? 0.7,
+        maxOutputTokens: opts.maxTokens ?? 4000,
+        responseMimeType: opts.expectJson ? "application/json" : "text/plain",
+      },
+    };
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${opts.googleModel}:generateContent?key=${opts.googleKey}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    );
+    if (!res.ok) throw new Error(`Google API error ${res.status}: ${await res.text()}`);
+    const data = (await res.json()) as { candidates?: { content?: { parts?: Array<{ text?: string }> } }[] };
+    return data.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
+  }
+
+  if (opts.provider === "openrouter") {
+    if (!opts.openrouterKey) throw new Error("OpenRouter API key is not configured");
+    const body: Record<string, unknown> = {
+      model: opts.openrouterModel,
+      messages: [
+        { role: "system", content: opts.system },
+        { role: "user", content: opts.user },
+      ],
+      temperature: opts.temperature ?? 0.7,
+      max_tokens: opts.maxTokens ?? 4000,
+    };
+    if (opts.expectJson) body.response_format = { type: "json_object" };
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${opts.openrouterKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`OpenRouter API error ${res.status}: ${await res.text()}`);
+    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+    return data.choices?.[0]?.message?.content || "";
   }
 
   // openai

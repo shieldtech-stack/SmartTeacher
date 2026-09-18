@@ -1,6 +1,9 @@
 -- SmartTeacher Supabase Schema (PostgreSQL + pgvector)
 -- Adapted from the original plan and extended with the `subjects` table.
 
+-- Enable the pgvector extension (required for the VECTOR type below).
+CREATE EXTENSION IF NOT EXISTS vector;
+
 -- 1. Users & Profiles
 CREATE TABLE profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,

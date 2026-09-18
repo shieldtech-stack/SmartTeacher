@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useOnline } from "@/hooks/use-online";
-import { getDataMode } from "@/lib/settings";
+import { getDataMode, type DataMode } from "@/lib/settings";
 import { flushSyncQueue, pullDocuments } from "@/lib/offline/sync";
 import { useAuth } from "@/lib/auth/context";
 import { Button } from "@/components/ui/button";
@@ -35,10 +35,14 @@ const NAV = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const online = useOnline();
-  const dataMode = getDataMode();
+  const [dataMode, setDataModeState] = React.useState<DataMode>("local");
   const { user, initializing, signOut } = useAuth();
   const isPrint = pathname.startsWith("/print");
   const userId = user?.id;
+
+  React.useEffect(() => {
+    setDataModeState(getDataMode());
+  }, []);
 
   React.useEffect(() => {
     if (online) flushSyncQueue().catch(() => {});
@@ -84,11 +88,36 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 pt-6 sm:pb-10">{children}</main>
-
-      <footer className="no-print">
-        <nav className="fixed bottom-0 left-0 right-0 z-40 border-t bg-card sm:hidden">
-          <div className="flex items-stretch justify-around">
+      <nav className="no-print sticky top-14 z-40 border-b bg-card/80 backdrop-blur">
+        <div className="flex items-stretch justify-around sm:hidden">
+          {NAV.map((item) => {
+            const active = pathname === item.href || pathname.startsWith(item.href + "/");
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "group flex flex-1 flex-col items-center gap-0.5 py-1.5 text-[10px] font-medium transition-colors",
+                  active ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <span
+                  className={cn(
+                    "flex h-7 w-14 items-center justify-center rounded-full transition-colors",
+                    active ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground group-hover:bg-secondary/70"
+                  )}
+                >
+                  <Icon className="h-5 w-5" />
+                </span>
+                <span className={cn(active && "font-semibold")}>{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+        <div className="hidden items-center gap-1 px-4 py-2 sm:flex">
+          <div className="mx-auto flex w-full max-w-6xl items-center gap-1">
             {NAV.map((item) => {
               const active = pathname === item.href || pathname.startsWith(item.href + "/");
               const Icon = item.icon;
@@ -96,36 +125,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={cn(
-                    "flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium",
-                    active ? "text-primary" : "text-muted-foreground"
-                  )}
                   aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
+                    active
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:bg-secondary/70 hover:text-foreground"
+                  )}
                 >
-                  <Icon className="h-5 w-5" />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </div>
-        </nav>
-        <div className="hidden border-t sm:block">
-          <div className="mx-auto flex w-full max-w-6xl items-center gap-1 px-4 py-2 text-sm text-muted-foreground">
-            {NAV.map((item) => {
-              const active = pathname === item.href || pathname.startsWith(item.href + "/");
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn("rounded-md px-3 py-1.5", active ? "bg-secondary font-medium text-foreground" : "hover:bg-secondary/60")}
-                >
+                  <Icon className="h-4 w-4" />
                   {item.label}
                 </Link>
               );
             })}
           </div>
         </div>
-      </footer>
+      </nav>
+
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-10 pt-6">{children}</main>
     </div>
   );
 }

@@ -113,39 +113,68 @@ export function buildSchemeTemplate(opts: {
   term: string;
   year: number;
   durationWeeks: number;
+  lessonsPerWeek?: number;
   subtopics: Subtopic[];
 }): SchemeOfWork {
   const { subtopics } = opts;
   const weeks = Math.max(1, opts.durationWeeks);
+  const lessonsPerWeek = Math.max(1, opts.lessonsPerWeek ?? 2);
+  const maxTotalLessons = weeks * lessonsPerWeek;
   const rows: SchemeRow[] = [];
-  let lessonNumber = 1;
-  const lessonsPerWeek = Math.max(1, Math.ceil(subtopics.length / weeks));
 
-  subtopics.forEach((sub, i) => {
-    const week = Math.floor(i / lessonsPerWeek) + 1;
-    const lessonsThisSubtopic = 1;
-    for (let l = 0; l < lessonsThisSubtopic; l++) {
-      rows.push({
-        week,
-        lessonNumber: lessonNumber++,
-        strand: opts.strand,
-        subtopic: sub.title,
-        learningOutcomes: sub.learningOutcomes,
-        keyInquiryQuestions: [
-          `What do we understand by ${sub.title.toLowerCase()}?`,
-          "Where do we see this in our daily lives?",
-          "What happens if we apply the idea incorrectly?",
-        ],
-        learningActivities: [
-          "Class discussion and brainstorming on the concept",
-          "Guided problem solving / hands-on activity",
-          "Group work followed by presentation of findings",
-        ],
-        resources: RESOURCES.slice(0, 4),
-        assessment: ["Oral questions during the lesson", "Written exercises", "Short quiz at the end of the week"],
-      });
+  for (const sub of subtopics) {
+    const outcomes = sub.learningOutcomes;
+    const experiences = sub.suggestedExperiences && sub.suggestedExperiences.length > 0
+      ? sub.suggestedExperiences
+      : ["Class discussion and brainstorming", "Guided hands-on activity", "Group work and presentation"];
+
+    // Per subtopic lesson limit
+    const subtopicLimit = sub.lessonCount && sub.lessonCount > 0 
+      ? sub.lessonCount 
+      : Math.max(1, experiences.length, outcomes.length * 3);
+
+    // Build per-outcome lesson plan
+    for (let oi = 0; oi < outcomes.length; oi++) {
+      const outcome = outcomes[oi];
+      
+      // Derive 1-2 key inquiry questions from this specific outcome
+      const keyQuestions = deriveKeyQuestions(outcome, sub.title);
+      
+      // Allocate 1-3 lessons for this outcome (cap at 3)
+      const lessonsForOutcome = Math.min(3, Math.max(1, Math.ceil((experiences.length || 1) / outcomes.length)));
+      
+      for (let li = 0; li < lessonsForOutcome; li++) {
+        // Check subtopic lesson limit
+        const lessonsSoFarForSubtopic = rows.filter(r => r.subtopic === sub.title).length;
+        if (lessonsSoFarForSubtopic >= subtopicLimit) break;
+        
+        // Global lesson limit
+        if (rows.length >= maxTotalLessons) break;
+
+        // Pick the specific experience for this lesson
+        const expIdx = Math.min(oi + li, experiences.length - 1);
+        const lessonExperience = experiences[expIdx];
+        
+        // Derive key questions for this specific outcome (1-2)
+        const lessonQuestions = deriveKeyQuestions(outcome, sub.title).slice(0, 2);
+
+        rows.push({
+          week: Math.floor(rows.length / lessonsPerWeek) + 1,
+          lessonNumber: rows.length + 1,
+          strand: opts.strand,
+          subtopic: sub.title,
+          learningOutcomes: [outcomes[oi]],
+          keyInquiryQuestions: lessonQuestions,
+          learningActivities: [experiences[expIdx] || experiences[0]],
+          resources: RESOURCES.slice(0, 4),
+          assessment: ["Oral questions during the lesson", "Written exercises", "Revision and assessment at the end of every week"],
+        });
+      }
     }
-  });
+  }
+
+  // Don't force-fill weeks - return actual coverage
+  const actualWeeks = rows.length > 0 ? Math.max(...rows.map(r => r.week)) : 1;
 
   return {
     id: generateId(),
@@ -156,9 +185,39 @@ export function buildSchemeTemplate(opts: {
     term: opts.term,
     year: opts.year,
     rows,
-    durationWeeks: weeks,
+    durationWeeks: Math.max(1, actualWeeks),
     createdAt: Date.now(),
   };
+}
+
+// Derive 1-2 key inquiry questions from a learning outcome
+function deriveKeyQuestions(outcome: string, subtopicTitle: string): string[] {
+  const lower = outcome.toLowerCase();
+  const questions: string[] = [];
+  
+  if (lower.includes("identify")) {
+    questions.push(`What are the key features that help us identify ${subtopicTitle.toLowerCase()}?`);
+  }
+  if (lower.includes("describe") || lower.includes("explain")) {
+    questions.push(`How would you explain the importance of ${subtopicTitle.toLowerCase()} in your own words?`);
+  }
+  if (lower.includes("appreciate") || lower.includes("value")) {
+    questions.push(`Why is ${subtopicTitle.toLowerCase()} important in our daily lives?`);
+  }
+  if (lower.includes("demonstrate") || lower.includes("perform") || lower.includes("apply")) {
+    questions.push(`How can we apply what we know about ${subtopicTitle.toLowerCase()} to solve a real problem?`);
+  }
+  if (lower.includes("classify") || lower.includes("categorize")) {
+    questions.push(`What criteria would you use to group different types of ${subtopicTitle.toLowerCase()}?`);
+  }
+  
+  // Fallback generic questions
+  if (questions.length === 0) {
+    questions.push(`What do we understand by ${subtopicTitle.toLowerCase()}?`);
+    questions.push(`Where do we see ${subtopicTitle.toLowerCase()} in our daily lives?`);
+  }
+  
+  return questions.slice(0, 2); // Max 2 questions per outcome
 }
 
 export function buildLessonPlanTemplate(opts: {
@@ -167,24 +226,114 @@ export function buildLessonPlanTemplate(opts: {
   durationMinutes: number;
   subtopic: Subtopic;
   strand: string;
+  week?: number;
+  lessonNumber?: number;
+  term?: string;
+  year?: number;
 }): LessonPlan {
   const { subtopic } = opts;
-  const activities: LessonActivity[] = PHASES.map((p) => ({
-    section: p.section,
-    phase: p.phase,
-    durationMinutes: p.durationMinutes,
-    description: p.description(subtopic.title),
-    teacherActivity: [
-      "Explain the concept clearly with examples",
-      "Give feedback and correct misconceptions",
-      "Manage learner activities and monitor progress",
-    ],
-    learnerActivity: [
-      "Listen, take notes and ask questions",
-      "Participate in discussions and group tasks",
-      "Complete practice exercises independently",
-    ],
-  }));
+  const experiences = subtopic.suggestedExperiences && subtopic.suggestedExperiences.length > 0
+    ? subtopic.suggestedExperiences
+    : [
+        "Class discussion and brainstorming on the concept",
+        "Guided problem solving / hands-on activity",
+        "Group work followed by presentation of findings",
+      ];
+
+  const outcome = subtopic.learningOutcomes[0] || "";
+  const experience = subtopic.suggestedExperiences?.[0] || experiences[0];
+
+  // CBC lesson phases
+  const phases = [
+    { 
+      section: "Introduction", 
+      phase: "introduction" as const, 
+      duration: 10, 
+      desc: `Introduce "${subtopic.title}" using: ${experience || "questioning and discussion"}`
+    },
+    { 
+      section: "Lesson Development - Step 1", 
+      phase: "main" as const, 
+      duration: 15, 
+      desc: `Step 1 - Direct Instruction: Teacher explains and demonstrates key concepts for "${subtopic.title}"`
+    },
+    { 
+      section: "Lesson Development - Step 2", 
+      phase: "main" as const, 
+      duration: 15, 
+      desc: `Step 2 - Guided Practice: Learners practice ${subtopic.title.toLowerCase()} with teacher guidance`
+    },
+    { 
+      section: "Lesson Development - Step 3", 
+      phase: "main" as const, 
+      duration: 10, 
+      desc: `Step 3 - Independent Practice: Learners apply ${subtopic.title.toLowerCase()} independently`
+    },
+    { 
+      section: "Conclusion", 
+      phase: "conclusion" as const, 
+      duration: 5, 
+      desc: `Review key points of "${subtopic.title}", link to next lesson`
+    },
+];
+
+  function makeActivities(): LessonActivity[] {
+    return phases.map((p) => ({
+      section: p.section,
+      phase: p.phase,
+      durationMinutes: p.duration,
+      description: p.desc,
+      teacherActivity: [
+        "Introduce the concept and state learning objectives",
+        "Demonstrate and model the skill/concept",
+        "Guide learners through practice with feedback",
+        "Facilitate independent work and monitor progress",
+        "Summarize key points and assess understanding",
+      ],
+      learnerActivity: [
+        "Listen, observe, and ask questions",
+        "Participate in discussion and guided practice",
+        "Work on tasks with teacher support",
+        "Complete independent exercises",
+        "Summarize key points and ask clarifying questions",
+      ],
+    }));
+  }
+
+  const activities = makeActivities();
+
+  // Core competencies as checkbox items (CBC format)
+  const coreCompetencies = subtopic.coreCompetencies && subtopic.coreCompetencies.length > 0
+    ? subtopic.coreCompetencies
+    : [
+        "Communication and collaboration",
+        "Critical thinking and problem solving",
+        "Learning to learn",
+      ];
+
+  // Values
+  const values = ["Respect", "Responsibility", "Integrity"];
+
+  // PCIs
+  const pcis = ["Citizenship", "Environmental awareness"];
+
+  // Resources
+  const resources = [
+    "Approved course textbook",
+    "Chalkboard / whiteboard and markers",
+    "Printed worksheets / learner activity sheets",
+    "Real objects / models / charts as applicable",
+    "Digital devices (if available)",
+  ];
+
+  // Key inquiry questions derived from the single outcome
+  const keyQuestions = deriveKeyQuestions(outcome, subtopic.title).slice(0, 2);
+
+  // Extended activity
+  const extendedActivity = `Practice exercise: Apply ${subtopic.title} to a real-life situation.`;
+
+  // Teacher reflection
+  const reflection = `Reflect on the effectiveness of the lesson on ${subtopic.title}. Were the learning outcomes achieved? What could be improved?`;
 
   return {
     id: generateId(),
@@ -193,13 +342,25 @@ export function buildLessonPlanTemplate(opts: {
     gradeLevel: opts.gradeLevel,
     subject: opts.subject,
     durationMinutes: opts.durationMinutes,
-    objectives: subtopic.learningOutcomes,
-    keyInquiryQuestions: KEY_QUESTIONS.slice(0, 2),
+    objectives: [outcome],
+    keyInquiryQuestions: keyQuestions,
     activities,
-    assessmentMethods: ["Oral questioning", "Observation during tasks", "Exit ticket / short written task"],
+    assessmentMethods: ["Oral questioning", "Observation during tasks", "Written exercise / exit ticket"],
     differentiationNotes:
       "Provide additional support to struggling learners with simplified tasks and peer support; extend fast learners with advanced questions.",
-    materials: RESOURCES,
+    materials: [
+      "Approved course textbook",
+      "Chalkboard / whiteboard and markers",
+      "Printed worksheets / learner activity sheets",
+      "Real objects / models / charts as applicable",
+      "Digital devices (if available)",
+    ],
+    coreCompetencies,
+    values,
+    pcis,
+    resources,
+    extendedActivity,
+    reflection,
     createdAt: Date.now(),
   };
 }

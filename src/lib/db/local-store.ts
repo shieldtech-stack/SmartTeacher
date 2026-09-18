@@ -10,10 +10,6 @@ import type {
   LessonPlan,
   LessonNote,
 } from "@/lib/types";
-import {
-  SEED_CURRICULA,
-  type SeedCurriculum,
-} from "@/lib/curriculum/seed-data";
 
 export interface DirtyRecord {
   id?: number;
@@ -57,25 +53,4 @@ let instance: SmartTeacherDB | null = null;
 export function getLocalDB(): SmartTeacherDB {
   if (!instance) instance = new SmartTeacherDB();
   return instance;
-}
-
-export async function seedIfEmpty(): Promise<void> {
-  const db = getLocalDB();
-  const count = await db.curricula.count();
-  if (count > 0) return;
-
-  for (const seed of SEED_CURRICULA) {
-    await putSeedCurriculum(db, seed);
-  }
-}
-
-async function putSeedCurriculum(db: SmartTeacherDB, seed: SeedCurriculum) {
-  await db.curricula.put(seed.curriculum);
-  for (const subject of seed.subjects) {
-    await db.subjects.put(subject);
-    for (const strand of subject.strands) {
-      await db.strands.put(strand);
-      await db.subtopics.bulkPut(strand.subtopics);
-    }
-  }
 }

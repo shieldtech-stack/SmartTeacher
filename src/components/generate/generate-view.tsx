@@ -82,17 +82,60 @@ export function GenerateView() {
         toast({ title: "Scheme of Work ready", description: `${scheme.rows.length} lessons generated.` });
         router.push(`/scheme/${scheme.id}`);
       } else if (target === "plan") {
-        const plan = await generateLessonPlan(payload);
-        await savePlan(plan);
-        await syncDocument("plan", plan);
-        toast({ title: "Lesson Plan ready", description: `${plan.activities.length} activity phases.` });
-        router.push(`/plan/${plan.id}`);
+        // First ensure we have a scheme with lessons
+        let scheme;
+        const existingScheme = selection.subtopicIds.length ? null : null; // We'll load from DB if needed
+        
+        // Get the scheme - if not already generated, generate it first
+        const schemePayload = { ...payload, subtopics: payload.subtopics.filter(s => payload.selection.subtopicIds.includes(s.id)) };
+        const schemeResult = await generateScheme({ ...payload, subtopics: subtopics.filter(s => selection.subtopicIds.includes(s.id)) });
+        
+        // For each lesson in the scheme, generate a lesson plan
+        const plans = [];
+        for (const row of schemeResult.rows) {
+          // Create a subtopic-like object for this specific lesson/outcome
+          const lessonSubtopic = {
+            id: `lesson-${row.lessonNumber}`,
+            strandId: selection.strandId,
+            title: row.subtopic,
+            learningOutcomes: row.learningOutcomes,
+            suggestedExperiences: row.learningActivities,
+            lessonCount: 1,
+          };
+          
+          const lessonPayload = { ...payload, subtopics: [lessonSubtopic], selection: { ...selection, subtopicIds: [lessonSubtopic.id] } };
+          const plan = await generateLessonPlan(lessonPayload);
+          await savePlan(plan);
+          await syncDocument("plan", plan);
+          plans.push(plan);
+        }
+        
+        toast({ title: "Lesson Plans ready", description: `${plans.length} lesson plans generated (one per lesson).` });
+        if (plans.length > 0) router.push(`/plan/${plans[0].id}`);
       } else {
-        const notes = await generateLessonNotes(payload);
-        await saveNote(notes);
-        await syncDocument("note", notes);
-        toast({ title: "Lesson Notes ready", description: "Notes saved to your library." });
-        router.push(`/notes/${notes.id}`);
+        // Generate lesson notes for each lesson in the scheme
+        const schemeResult = await generateScheme({ ...payload, subtopics: subtopics.filter(s => selection.subtopicIds.includes(s.id)) });
+        
+        const notes = [];
+        for (const row of schemeResult.rows) {
+          const lessonSubtopic = {
+            id: `lesson-${row.lessonNumber}`,
+            strandId: selection.strandId,
+            title: row.subtopic,
+            learningOutcomes: row.learningOutcomes,
+            suggestedExperiences: row.learningActivities,
+            lessonCount: 1,
+          };
+          
+          const lessonPayload = { ...payload, subtopics: [lessonSubtopic], selection: { ...selection, subtopicIds: [lessonSubtopic.id] } };
+          const note = await generateLessonNotes(lessonPayload);
+          await saveNote(note);
+          await syncDocument("note", note);
+          notes.push(note);
+        }
+        
+        toast({ title: "Lesson Notes ready", description: `${notes.length} lesson notes generated (one per lesson).` });
+        if (notes.length > 0) router.push(`/notes/${notes[0].id}`);
       }
     } catch (e) {
       console.error(e);
@@ -106,7 +149,10 @@ export function GenerateView() {
 
   const settings = loadSettings();
   const llmLabel =
-    settings.llmProvider === "offline" ? "Offline template generator" : settings.llmProvider === "anthropic" ? "Claude (Anthropic)" : "OpenAI";
+    settings.llmProvider === "offline" ? "Offline template generator" :
+    settings.llmProvider === "google" ? "Gemini (Google)" :
+    settings.llmProvider === "openrouter" ? "OpenRouter" :
+    settings.llmProvider === "anthropic" ? "Claude (Anthropic)" : "OpenAI";
 
   return (
     <div className="space-y-6">
