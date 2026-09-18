@@ -104,7 +104,7 @@ async function viaLlm(text: string, settings: ProviderSettings): Promise<Extract
 const STRAND_RE =
   /^\s*(?:STRAND|Strand|Topic)\s*(?:[0-9]+(?:\.0)?[:.\-]?)?\s*[:.\-]?\s*(.+?)\s*$/;
 // a line that mentions "strand" as the table column header or mid-sentence context is NOT a strand header
-const STRAND_LIKE_SKIP_RE = /strand\s+sub\s+strand|strands?\s+sub-?\s*strands?|\bstem\s+strand\b|^summary\s+of\s+strands|suggested\s+number\s+of\s+lessons|^strands?\s*(?:sub-?strands?)?\s+(?:suggested\s+number|specific|learning|outcomes?|key\s+inquiry)/i;
+const STRAND_LIKE_SKIP_RE = /strand\s+sub\s+strand|strands?\s+sub-?\s*strands?|\bstem\s+strand\b|^summary\s+of\s+strands|suggested\s+number\s+of\s+lessons|^strands?\s*(?:sub-?strands?)?\s+(?:suggested\s+number|specific|learning|outcomes?|key\s+inquiry)|^strand\s+sub(?:-?\s*strand)?\s*$/i;
 const SUBSTRAND_RE =
   /^\s*(?:[0-9]+\.[1-9][0-9]*(?:\.[0-9]+)?|Sub[- ]?[Ss]trand|Sub[- ]?[Ss]tand|Sub topic|S\.S[:.\-]?|S\/S)\s*[:.\-]?\s*(.+?)\s*$/i;
 // Real KICD designs place sub-strands in table rows like "1.0 Numbers 1.1 Whole Numbers (20 lessons)".
@@ -124,7 +124,7 @@ const CORE_COMPETENCIES_RE = /core competencies?(?:\s*to be developed)?\s*[:.]?$
 // Section headers that end the core-competencies block (and must not be captured as competencies).
 const COMPETENCY_STOP_RE = /^(?:links?\s+to\s+other\s+learning\s+areas?|values?|pertinent|outcomes?|inquiry|question\(s\)|assessment|learning\s+resources|note|suggested|key\s+inquiry)/i;
 const SKIP_RE =
-  /^\s*(page\s*\d+|contents?|introduction|rationale|general\s+learning\s+outcomes?|specific\s+learning\s+outcomes?|suggested\s+learning\s+experiences?|key\s+inquiry\s+questions?|core\s+competencies?|values|pertinent|learning\s+resources|assessment\s*(rubric)?|the\s+learner\s+is\s+guided\s+to|notes?|references?|strand\s+sub\s+strand|suggested\s+number\s+of\s+lessons|total\s+number\s+of\s+lessons)\b/i;
+  /^\s*(page\s*\d+|contents?|introduction|rationale|general\s+learning\s+outcomes?|specific\s+learning\s+outcomes?|suggested\s+learning\s+experiences?|key\s+inquiry\s+questions?|core\s+competencies?|values|pertinent|learning\s+resources|assessment\s*(rubric)?|the\s+learner\s+is\s+guided\s+to|notes?|references?|strand\s+sub\s+strand|suggested\s+number\s+of\s+lessons|total\s+number\s+of\s+lessons|^strand\s+sub(?:-?\s*strand)?\s*$|^strand\s*$)\b/i;
 // Anything after an appendix/annex is reference material (re-lists every strand), not new content.
 // A Table of Contents also lists "APPENDIX 1: ... .....page" entries — those carry page-dot leaders and
 // must not trigger the cut, so we require the line to not end in dots/numbers.
@@ -307,8 +307,9 @@ function heuristicExtract(text: string): ExtractionResult {
   // The TOC/summary re-lists every strand; drop everything before the first real strand header and
   // everything at/after the first appendix (which re-lists every strand too). Front matter words like
   // "SPECIFIC LEARNING OUTCOMES" in the preamble are harmless because the body scan starts at STRAND 1.0.
-  const appendixStart = lines.findIndex((l) => APPENDIX_RE.test(l) && !APPENDIX_TOC_RE.test(l));
-  const cutEnd = appendixStart === -1 ? lines.length : appendixStart;
+  // Appendix detection is only meaningful AFTER the first real strand header: on some designs the Table of
+  // Contents lists "APPENDIX 1/2 ..." on long wrapped lines WITHOUT trailing dot-paged leaders, which used
+  // to cut the document at the TOC. Real appendix section headers always follow the strand content.
   const firstStrandIdx = lines.findIndex(
     (l) =>
       STRAND_RE.test(l) &&
@@ -318,6 +319,10 @@ function heuristicExtract(text: string): ExtractionResult {
       !/[.]{3,}/.test(l) &&
       !SKIP_RE.test(l)
   );
+  const appendixStart = lines.findIndex(
+    (l, idx) => idx > firstStrandIdx && APPENDIX_RE.test(l) && !APPENDIX_TOC_RE.test(l)
+  );
+  const cutEnd = appendixStart === -1 ? lines.length : appendixStart;
   const bodyLines = firstStrandIdx === -1 ? [] : lines.slice(firstStrandIdx, cutEnd);
 
   for (let i = 0; i < bodyLines.length; i++) {
