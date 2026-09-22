@@ -50,6 +50,9 @@ export function PlanView({ id }: { id: string }) {
             <Badge variant="secondary">{plan.subject}</Badge>
             <Badge variant="secondary">{plan.gradeLevel}</Badge>
             <Badge variant="secondary"><Clock className="mr-1 h-3 w-3" />{plan.durationMinutes} min</Badge>
+            <Badge variant={plan.llmSource === "ai" ? "success" : "outline"}>
+              {plan.llmSource === "ai" ? "AI generated" : "Offline template"}
+            </Badge>
             <span className="text-xs text-muted-foreground">Created {formatDate(plan.createdAt)}</span>
           </div>
         </div>

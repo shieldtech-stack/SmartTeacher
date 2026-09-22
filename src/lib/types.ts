@@ -93,6 +93,10 @@ export interface SchemeOfWork {
   rows: SchemeRow[];
   durationWeeks: number;
   createdAt: number;
+  /** how this document was produced: by the AI provider or the offline template */
+  llmSource?: "ai" | "template";
+  /** error that caused a fallback to the template, if any */
+  llmError?: string;
 }
 
 export interface LessonActivity {
@@ -124,6 +128,10 @@ export interface LessonPlan {
   extendedActivity?: string;
   reflection?: string;
   createdAt: number;
+  /** how this document was produced: by the AI provider or the offline template */
+  llmSource?: "ai" | "template";
+  /** error that caused a fallback to the template, if any */
+  llmError?: string;
 }
 
 export interface NoteSection {
@@ -147,6 +155,10 @@ export interface LessonNote {
   keyTerms: { term: string; definition: string }[];
   practiceQuestions: PracticeQuestion[];
   createdAt: number;
+  /** how this document was produced: by the AI provider or the offline template */
+  llmSource?: "ai" | "template";
+  /** error that caused a fallback to the template, if any */
+  llmError?: string;
 }
 
 export interface RetrievalChunk {
@@ -188,13 +200,13 @@ export interface ProviderSettings {
 export const DEFAULT_SETTINGS: ProviderSettings = {
   llmProvider: "offline",
   openaiKey: "",
-  openaiModel: "gpt-4o",
+  openaiModel: "gpt-4o-mini",
   anthropicKey: "",
-  anthropicModel: "claude-3-5-sonnet-20241022",
+  anthropicModel: "claude-3-7-sonnet-latest",
   googleKey: "",
-  googleModel: "gemini-1.5-flash",
+  googleModel: "gemini-3.1-flash-lite",
   openrouterKey: "",
-  openrouterModel: "google/gemini-flash-1.5",
+  openrouterModel: "google/gemini-3.1-flash-lite",
   embeddingProvider: "local",
   webSearchProvider: "none",
   tavilyKey: "",

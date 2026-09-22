@@ -8,12 +8,14 @@ import type {
   LessonNote,
   Subtopic,
 } from "@/lib/types";
-import { callLlm, parseJsonLoose } from "./provider";
+import { callLlm, parseJsonLoose, type LlmCallOptions } from "./provider";
 import {
   buildSchemeTemplate,
   buildLessonPlanTemplate,
   buildLessonNotesTemplate,
   buildContextBlock,
+  buildSubtopicRows,
+  renumberSchemeRows,
 } from "@/lib/generation/templates";
 import { generateId } from "@/lib/utils";
 
@@ -25,13 +27,13 @@ function getSharedLlmSettings(): ProviderSettings | null {
     return {
       llmProvider: "google",
       googleKey: process.env.GEMINI_API_KEY,
-      googleModel: process.env.GEMINI_MODEL || "gemini-1.5-flash",
+      googleModel: process.env.GEMINI_MODEL || "gemini-3.1-flash-lite",
       openaiKey: "",
-      openaiModel: "gpt-4o",
+      openaiModel: "gpt-4o-mini",
       anthropicKey: "",
-      anthropicModel: "claude-3-5-sonnet-20241022",
+      anthropicModel: "claude-3-7-sonnet-latest",
       openrouterKey: "",
-      openrouterModel: "google/gemini-flash-1.5",
+      openrouterModel: "google/gemini-3.1-flash-lite",
       embeddingProvider: "local",
       webSearchProvider: "none",
       tavilyKey: "",
@@ -47,11 +49,11 @@ function getSharedLlmSettings(): ProviderSettings | null {
       openaiKey: process.env.OPENAI_API_KEY,
       openaiModel: process.env.OPENAI_MODEL || "gpt-4o-mini",
       googleKey: "",
-      googleModel: "gemini-1.5-flash",
+      googleModel: "gemini-3.1-flash-lite",
       anthropicKey: "",
-      anthropicModel: "claude-3-5-sonnet-20241022",
+      anthropicModel: "claude-3-7-sonnet-latest",
       openrouterKey: "",
-      openrouterModel: "google/gemini-flash-1.5",
+      openrouterModel: "google/gemini-3.1-flash-lite",
       embeddingProvider: "local",
       webSearchProvider: "none",
       tavilyKey: "",
@@ -65,13 +67,13 @@ function getSharedLlmSettings(): ProviderSettings | null {
     return {
       llmProvider: "anthropic",
       anthropicKey: process.env.ANTHROPIC_API_KEY,
-      anthropicModel: process.env.ANTHROPIC_MODEL || "claude-3-haiku-20240307",
+      anthropicModel: process.env.ANTHROPIC_MODEL || "claude-3-7-sonnet-latest",
       openaiKey: "",
-      openaiModel: "gpt-4o",
+      openaiModel: "gpt-4o-mini",
       googleKey: "",
-      googleModel: "gemini-1.5-flash",
+      googleModel: "gemini-3.1-flash-lite",
       openrouterKey: "",
-      openrouterModel: "google/gemini-flash-1.5",
+      openrouterModel: "google/gemini-3.1-flash-lite",
       embeddingProvider: "local",
       webSearchProvider: "none",
       tavilyKey: "",
@@ -85,13 +87,13 @@ function getSharedLlmSettings(): ProviderSettings | null {
     return {
       llmProvider: "openrouter",
       openrouterKey: process.env.OPENROUTER_API_KEY,
-      openrouterModel: process.env.OPENROUTER_MODEL || "google/gemini-flash-1.5",
+      openrouterModel: process.env.OPENROUTER_MODEL || "google/gemini-3.1-flash-lite",
       openaiKey: "",
-      openaiModel: "gpt-4o",
+      openaiModel: "gpt-4o-mini",
       googleKey: "",
-      googleModel: "gemini-1.5-flash",
+      googleModel: "gemini-3.1-flash-lite",
       anthropicKey: "",
-      anthropicModel: "claude-3-5-sonnet-20241022",
+      anthropicModel: "claude-3-7-sonnet-latest",
       embeddingProvider: "local",
       webSearchProvider: "none",
       tavilyKey: "",
@@ -103,11 +105,18 @@ function getSharedLlmSettings(): ProviderSettings | null {
   return null;
 }
 
-function getEffectiveSettings(userSettings: ProviderSettings): ProviderSettings {
-  // If user has configured their own key, use it (priority)
-  if (userSettings.llmProvider !== "offline" && 
-      (userSettings.openaiKey || userSettings.anthropicKey || userSettings.googleKey || userSettings.openrouterKey)) {
-    return userSettings;
+export function getEffectiveSettings(userSettings: ProviderSettings): ProviderSettings {
+  // If the user has configured a key for the provider they actually selected, use it.
+  if (userSettings.llmProvider !== "offline") {
+    const keyForProvider =
+      userSettings.llmProvider === "openai"
+        ? userSettings.openaiKey
+        : userSettings.llmProvider === "anthropic"
+          ? userSettings.anthropicKey
+          : userSettings.llmProvider === "google"
+            ? userSettings.googleKey
+            : userSettings.openrouterKey;
+    if (keyForProvider) return userSettings;
   }
   // Otherwise fall back to shared server-side key
   const shared = getSharedLlmSettings();
@@ -116,13 +125,13 @@ function getEffectiveSettings(userSettings: ProviderSettings): ProviderSettings 
   return {
     llmProvider: "offline",
     openaiKey: "",
-    openaiModel: "gpt-4o",
+    openaiModel: "gpt-4o-mini",
     anthropicKey: "",
-    anthropicModel: "claude-3-5-sonnet-20241022",
+    anthropicModel: "claude-3-7-sonnet-latest",
     googleKey: "",
-    googleModel: "gemini-1.5-flash",
+    googleModel: "gemini-3.1-flash-lite",
     openrouterKey: "",
-    openrouterModel: "google/gemini-flash-1.5",
+    openrouterModel: "google/gemini-3.1-flash-lite",
     embeddingProvider: "local",
     webSearchProvider: "none",
     tavilyKey: "",
@@ -148,6 +157,7 @@ function describeSubtopics(subtopics: Subtopic[]): string {
     .map(
       (s, i) =>
         `${i + 1}. ${s.title}\n` +
+        `   Suggested lessons: ${s.lessonCount && s.lessonCount > 0 ? s.lessonCount : Math.max(1, s.learningOutcomes.length)}\n` +
         `   Learning outcomes:\n   ${s.learningOutcomes.map((o) => `- ${o}`).join("\n   ")}` +
         (s.suggestedExperiences && s.suggestedExperiences.length
           ? `\n   Suggested learning experiences:\n   ${s.suggestedExperiences.map((e) => `- ${e}`).join("\n   ")}`
@@ -156,8 +166,67 @@ function describeSubtopics(subtopics: Subtopic[]): string {
     .join("\n");
 }
 
+function normalizeSubtopicTitle(t: string): string {
+  return (t || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+// Guarantee that every subtopic ends up with exactly its suggested number of
+// lessons. The AI (and even templates) often under-generate; we truncate rows
+// that exceed the count and fill gaps with curriculum-aligned template rows.
+function enforceLessonCounts(
+  rows: SchemeRow[],
+  subtopics: Subtopic[],
+  strand: string,
+  lessonsPerWeek: number
+): SchemeRow[] {
+  const byNormalized = new Map<string, Subtopic>();
+  for (const s of subtopics) byNormalized.set(normalizeSubtopicTitle(s.title), s);
+
+  const buckets = new Map<string, SchemeRow[]>();
+  for (const r of rows) {
+    const sub = byNormalized.get(normalizeSubtopicTitle(r.subtopic));
+    if (!sub) continue;
+    const list = buckets.get(sub.title) || [];
+    list.push(r);
+    buckets.set(sub.title, list);
+  }
+
+  const selected: SchemeRow[] = [];
+  for (const s of subtopics) {
+    const total = s.lessonCount && s.lessonCount > 0 ? s.lessonCount : Math.max(1, s.learningOutcomes.length);
+    const ideal = buildSubtopicRows(s, strand);
+    const mine = buckets.get(s.title) || [];
+    for (let i = 0; i < total; i++) {
+      selected.push(mine[i] ?? ideal[i % ideal.length]);
+    }
+  }
+  return renumberSchemeRows(selected, lessonsPerWeek);
+}
+
 function hasLlm(settings: ProviderSettings): boolean {
   return settings.llmProvider !== "offline";
+}
+
+function llmCall(settings: ProviderSettings, system: string, user: string, maxTokens: number): Promise<string> {
+  return callLlm({
+    provider: settings.llmProvider as LlmCallOptions["provider"],
+    openaiKey: settings.openaiKey,
+    openaiModel: settings.openaiModel,
+    anthropicKey: settings.anthropicKey,
+    anthropicModel: settings.anthropicModel,
+    googleKey: settings.googleKey,
+    googleModel: settings.googleModel,
+    openrouterKey: settings.openrouterKey,
+    openrouterModel: settings.openrouterModel,
+    system,
+    user,
+    expectJson: settings.llmProvider === "openai" || settings.llmProvider === "google",
+    maxTokens,
+  });
+}
+
+export function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }
 
 // ---------------------------------------------------------------------------
@@ -172,50 +241,43 @@ interface SchemeJson {
 async function schemeFromLlm(input: GenerationInput): Promise<SchemeOfWork | null> {
   const { selection, subtopics } = input;
   const system =
-    "You are an expert curriculum developer and senior teacher. You generate structured Schemes of Work in valid JSON only. " +
+    "You are an expert curriculum design assistant specialising in competency-based education schemes of work (CBC/KSA framework). " +
+    "You generate a structured, progressive Scheme of Work as strict JSON only. " +
     "Do not include markdown fences, commentary or extra text — output a single JSON object.";
 
   const user = [
-    `Generate a Scheme of Work for the selection below.`,
+    `TASK: Generate a structured, progressive Scheme of Work for the selection below, covering every suggested lesson.`,
     `Grade/Level: ${selection.gradeLevel}`,
     `Subject: ${selection.subjectName}`,
     `Strand: ${selection.strandName}`,
     `Term: ${selection.term ?? "Term 1"}, Year: ${selection.year ?? new Date().getFullYear()}`,
-    `Term length: ${selection.weeksPerTerm ?? 13} weeks with ${selection.lessonsPerWeek ?? 2} lesson(s) per week.`,
+    `Term length: ${selection.weeksPerTerm ?? 13} weeks with ${selection.lessonsPerWeek ?? 2} lesson(s) per week. At most ${selection.lessonsPerWeek ?? 2} lessons fall in the same week.`,
     ``,
-    `Subtopics to cover:\n${describeSubtopics(subtopics)}`,
+    `Subtopics to cover (NOTE the exact "Suggested lessons" for each):\n${describeSubtopics(subtopics)}`,
     ``,
     contextFor(input),
     ``,
     `Return strict JSON with this exact shape:`,
     `{ "title": string, "rows": [{ "week": number, "lessonNumber": number, "subtopic": string, "learningOutcomes": string[], "keyInquiryQuestions": string[], "learningActivities": string[], "resources": string[], "assessment": string[] }] }`,
-    `CRITICAL RULES:`,
-    `1. ONE ROW = ONE LESSON. Each row has ONE learning outcome and ONE learning activity.`,
-    `2. GROUP BY OUTCOME: All lessons for the SAME learning outcome MUST BE CONSECUTIVE. Do not interleave outcomes.`,
-    `3. MAX 3 LESSONS PER OUTCOME. If an outcome needs more practice, cap at 3 lessons.`,
-    `4. RESPECT SUGGESTED LESSONS: Each subtopic has a "lessonCount" (e.g., 12 for Fungi). Do NOT exceed this total for that subtopic.`,
-    `5. STOP WHEN EXHAUSTED: If all subtopics' lessons are used up, STOP. Do NOT repeat subtopics or outcomes to fill remaining weeks. Return only the lessons that fit the actual curriculum content.`,
-    `6. ONE ACTIVITY PER LESSON: The "learningActivities" array should contain exactly ONE activity — the specific suggested learning experience from the curriculum design for that lesson.`,
-    `7. ALLOCATE BY EXPERIENCES: Use "suggestedExperiences" to determine how many lessons each outcome gets (1-3 per outcome, max 3).`,
-    `Spread the selected subtopics across the term respecting their suggested lesson counts. Number lessons sequentially. Include key inquiry questions, resources and assessment aligned to CBC pedagogy.`,
+    `CRITICAL RULES & CONSTRAINTS:`,
+    `1. ONE ROW = ONE LESSON. Every suggested lesson appears as its own row.`,
+    `2. EXACT LESSON COUNT: Generate EXACTLY the "Suggested lessons" number of rows for EVERY subtopic (e.g. if a subtopic says "Suggested lessons: 8", produce exactly 8 rows for it). The total number of rows must EQUAL THE SUM of all "Suggested lessons" values. Count and verify before returning.`,
+    `3. NO REPETITION: Every lesson MUST have distinct, non-repetitive Specific Learning Outcomes, Key Inquiry Questions and Learning Activities. Do NOT copy-paste outcomes or activities across lessons — even lessons in the same subtopic must differ.`,
+    `4. OUTCOMES FORMAT (KSA Framework): Each row's "learningOutcomes" field MUST contain EXACTLY THREE bullet strings, labelled and categorised as: "Knowledge: ..." (a concept, definition or principle the learner will understand), "Skill: ..." (a practical action, operation or process the learner will perform) and "Attitude: ..." (a value, behaviour or appreciation the learner will demonstrate).`,
+    `5. PROGRESSION: Lessons within each subtopic must follow a logical pedagogical sequence: conceptual understanding -> skill application -> practical/real-world contextualisation -> error analysis/synthesis. Cycle through this order as long as the subtopic's lessons last.`,
+    `6. SPECIFIC ACTIVITIES: "learningActivities" must contain EXACTLY ONE concrete learner action that matches that lesson's specific skill (e.g. "Use a grid chart to convert decimals to percentages", "Analyse store receipts to calculate discounts", "Draft a mock budget in pairs"). Avoid generic phrases like "Discuss the topic".`,
+    `7. KEY INQUIRY QUESTION: "keyInquiryQuestions" contains EXACTLY ONE distinct question for that lesson, derived from the lesson's outcome and activity. No two lessons share the same question.`,
+    `8. GROUP BY SUBTOPIC: All rows for the same subtopic must be CONSECUTIVE. Number lessonNumber sequentially 1, 2, 3... across the whole term.`,
+    `9. RESOURCES & ASSESSMENT: Provide concrete, relevant resources (charts, realia, tools, textbook) and CBC-style assessment methods (observation, practical work, peer assessment, exercises) that fit the activity.`,
+    `Style your output like a senior teacher: precise, classroom-ready and learner-centred.`,
   ].join("\n");
 
-  const raw = await callLlm({
-    provider: input.settings.llmProvider as "openai" | "anthropic",
-    openaiKey: input.settings.openaiKey,
-    openaiModel: input.settings.openaiModel,
-    anthropicKey: input.settings.anthropicKey,
-    anthropicModel: input.settings.anthropicModel,
-    system,
-    user,
-    expectJson: input.settings.llmProvider === "openai",
-    maxTokens: 4000,
-  });
+  const raw = await llmCall(input.settings, system, user, 4000);
 
   const parsed = parseJsonLoose<SchemeJson>(raw);
   if (!parsed || !Array.isArray(parsed.rows) || parsed.rows.length === 0) return null;
 
-  const rows: SchemeRow[] = parsed.rows.map((r) => ({
+  const mappedRows: SchemeRow[] = parsed.rows.map((r) => ({
     week: Number(r.week) || 1,
     lessonNumber: Number(r.lessonNumber) || 1,
     strand: r.strand || selection.strandName || "",
@@ -226,6 +288,8 @@ async function schemeFromLlm(input: GenerationInput): Promise<SchemeOfWork | nul
     resources: r.resources || [],
     assessment: r.assessment || [],
   }));
+
+  const rows = enforceLessonCounts(mappedRows, subtopics, selection.strandName || "", selection.lessonsPerWeek || 2);
 
   return {
     id: generateId(),
@@ -246,12 +310,24 @@ export async function generateScheme(input: GenerationInput): Promise<SchemeOfWo
   if (hasLlm(effectiveSettings)) {
     try {
       const result = await schemeFromLlm({ ...input, settings: effectiveSettings });
-      if (result) return result;
+      if (!result) throw new Error("AI responded but the output could not be parsed — used the offline template");
+      return { ...result, llmSource: "ai" };
     } catch (e) {
       console.warn("LLM scheme generation failed, using template:", e);
+      const fallback = buildSchemeTemplate({
+        gradeLevel: input.selection.gradeLevel || "",
+        subject: input.selection.subjectName || "",
+        strand: input.selection.strandName || "",
+        term: input.selection.term || "Term 1",
+        year: input.selection.year || new Date().getFullYear(),
+        durationWeeks: Math.max(1, input.selection.weeksPerTerm ?? Math.ceil(Math.max(1, input.subtopics.length) / 2)),
+        lessonsPerWeek: Math.max(1, input.selection.lessonsPerWeek ?? Math.ceil(Math.max(1, input.subtopics.length) / Math.max(1, input.selection.weeksPerTerm ?? 13))),
+        subtopics: input.subtopics,
+      });
+      return { ...fallback, llmSource: "template", llmError: errorMessage(e) };
     }
   }
-  return buildSchemeTemplate({
+  const fallback = buildSchemeTemplate({
     gradeLevel: input.selection.gradeLevel || "",
     subject: input.selection.subjectName || "",
     strand: input.selection.strandName || "",
@@ -261,6 +337,7 @@ export async function generateScheme(input: GenerationInput): Promise<SchemeOfWo
     lessonsPerWeek: Math.max(1, input.selection.lessonsPerWeek ?? Math.ceil(Math.max(1, input.subtopics.length) / Math.max(1, input.selection.weeksPerTerm ?? 13))),
     subtopics: input.subtopics,
   });
+  return { ...fallback, llmSource: "template" };
 }
 
 // ---------------------------------------------------------------------------
@@ -311,17 +388,7 @@ async function planFromLlm(input: GenerationInput): Promise<LessonPlan | null> {
     `Base activities DIRECTLY on the "Suggested learning experiences" from the curriculum design.`,
   ].join("\n");
 
-  const raw = await callLlm({
-    provider: input.settings.llmProvider as "openai" | "anthropic",
-    openaiKey: input.settings.openaiKey,
-    openaiModel: input.settings.openaiModel,
-    anthropicKey: input.settings.anthropicKey,
-    anthropicModel: input.settings.anthropicModel,
-    system,
-    user,
-    expectJson: input.settings.llmProvider === "openai",
-    maxTokens: 3500,
-  });
+  const raw = await llmCall(input.settings, system, user, 3500);
 
   const parsed = parseJsonLoose<PlanJson>(raw);
   if (!parsed || !Array.isArray(parsed.activities) || parsed.activities.length === 0) return null;
@@ -364,18 +431,28 @@ export async function generateLessonPlan(input: GenerationInput): Promise<Lesson
   if (hasLlm(effectiveSettings)) {
     try {
       const result = await planFromLlm({ ...input, settings: effectiveSettings });
-      if (result) return result;
+      if (!result) throw new Error("AI responded but the output could not be parsed — used the offline template");
+      return { ...result, llmSource: "ai" };
     } catch (e) {
       console.warn("LLM lesson plan generation failed, using template:", e);
+      const fallback = buildLessonPlanTemplate({
+        gradeLevel: input.selection.gradeLevel || "",
+        subject: input.selection.subjectName || "",
+        durationMinutes: input.selection.durationMinutes || 40,
+        subtopic: primary,
+        strand: input.selection.strandName || "",
+      });
+      return { ...fallback, llmSource: "template", llmError: errorMessage(e) };
     }
   }
-  return buildLessonPlanTemplate({
+  const fallback = buildLessonPlanTemplate({
     gradeLevel: input.selection.gradeLevel || "",
     subject: input.selection.subjectName || "",
     durationMinutes: input.selection.durationMinutes || 40,
     subtopic: primary,
     strand: input.selection.strandName || "",
   });
+  return { ...fallback, llmSource: "template" };
 }
 
 // ---------------------------------------------------------------------------
@@ -410,17 +487,7 @@ async function notesFromLlm(input: GenerationInput): Promise<LessonNote | null> 
     `The "markdown" field is the full study note in Markdown: an intro, a "What you need to know" section, a "Key Terms" section, a "Summary" bullet list, and a "Self-Test Questions" section. Include definitions and a worked example. Keep language simple and learner-friendly.`,
   ].join("\n");
 
-  const raw = await callLlm({
-    provider: input.settings.llmProvider as "openai" | "anthropic",
-    openaiKey: input.settings.openaiKey,
-    openaiModel: input.settings.openaiModel,
-    anthropicKey: input.settings.anthropicKey,
-    anthropicModel: input.settings.anthropicModel,
-    system,
-    user,
-    expectJson: input.settings.llmProvider === "openai",
-    maxTokens: 3000,
-  });
+  const raw = await llmCall(input.settings, system, user, 3000);
 
   const parsed = parseJsonLoose<NotesJson>(raw);
   if (!parsed || !parsed.markdown) return null;
@@ -444,14 +511,22 @@ export async function generateLessonNotes(input: GenerationInput): Promise<Lesso
   if (hasLlm(effectiveSettings)) {
     try {
       const result = await notesFromLlm({ ...input, settings: effectiveSettings });
-      if (result) return result;
+      if (!result) throw new Error("AI responded but the output could not be parsed — used the offline template");
+      return { ...result, llmSource: "ai" };
     } catch (e) {
       console.warn("LLM notes generation failed, using template:", e);
+      const fallback = buildLessonNotesTemplate({
+        gradeLevel: input.selection.gradeLevel || "",
+        subject: input.selection.subjectName || "",
+        subtopic: primary,
+      });
+      return { ...fallback, llmSource: "template", llmError: errorMessage(e) };
     }
   }
-  return buildLessonNotesTemplate({
+  const fallback = buildLessonNotesTemplate({
     gradeLevel: input.selection.gradeLevel || "",
     subject: input.selection.subjectName || "",
     subtopic: primary,
   });
+  return { ...fallback, llmSource: "template" };
 }

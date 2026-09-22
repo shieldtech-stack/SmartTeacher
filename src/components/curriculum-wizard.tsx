@@ -11,6 +11,7 @@ import {
 } from "@/lib/db/store";
 import type { Curriculum, Subject, Strand, Subtopic, CurriculumSelection, Term } from "@/lib/types";
 import { loadSelection, saveSelection } from "@/lib/db/store";
+import { seedCurriculaIfEmpty } from "@/lib/curriculum/seed";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -62,6 +63,7 @@ export function CurriculumWizard({ compact = false }: { compact?: boolean }) {
 
   React.useEffect(() => {
     const load = async () => {
+      await seedCurriculaIfEmpty();
       const c = await listCurricula();
       setCurricula(c);
       setLoaded(true);
@@ -322,12 +324,20 @@ export function CurriculumWizard({ compact = false }: { compact?: boolean }) {
                   >
                     <Checkbox className="mt-0.5" checked={checked} onChange={() => toggleSubtopic(s.id)} />
                     <div>
-                      <p className="text-sm font-medium">{s.title}</p>
+                      <p className="text-sm font-medium">
+                        {s.title}
+                        {s.lessonCount ? <span className="ml-1 text-xs text-muted-foreground">({s.lessonCount} lessons)</span> : null}
+                      </p>
                       <ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">
                         {s.learningOutcomes.map((o, i) => (
                           <li key={i}>{o}</li>
                         ))}
                       </ul>
+                      {s.suggestedExperiences && s.suggestedExperiences.length > 0 && (
+                        <p className="mt-1 text-[11px] text-muted-foreground/80">
+                          Suggested activities: {s.suggestedExperiences.length}
+                        </p>
+                      )}
                     </div>
                   </label>
                 );

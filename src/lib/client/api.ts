@@ -100,3 +100,13 @@ export function generateLessonPlan(payload: GenerationInputPayload): Promise<Les
 export function generateLessonNotes(payload: GenerationInputPayload): Promise<LessonNote> {
   return post("/api/generate/notes", payload);
 }
+
+export async function testLlmConnection(settings: ProviderSettings): Promise<{ ok: boolean; model?: string; sample?: string; error?: string }> {
+  const res = await fetch("/api/generate/test", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ settings }),
+  });
+  const data = await res.json().catch(() => ({}));
+  return data as { ok: boolean; model?: string; sample?: string; error?: string };
+}

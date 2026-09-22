@@ -106,6 +106,100 @@ const DEFAULT_NOTE = {
     "Worked example: Read the definition carefully, connect it with an example from your life, and then attempt the self-test questions at your own pace.",
 };
 
+const KNOWLEDGE_TEMPLATES = [
+  (t: string) => `Define ${t} and describe the main ideas and key terms connected to it.`,
+  (t: string) => `Explain the rule or procedure used when working with ${t}, and when each step should be applied.`,
+  (t: string) => `Identify everyday situations in which ${t} can be used, and state why learning it is useful there.`,
+  (t: string) => `Describe typical mistakes made with ${t} and the checking strategies that prevent them.`,
+  (t: string) => `Represent ${t} using examples, diagrams or symbols, and read them back correctly.`,
+  (t: string) => `Compare and contrast two examples of ${t} to highlight what changes and what stays the same.`,
+  (t: string) => `Recall the vocabulary of ${t} and use it accurately when explaining answers aloud.`,
+  (t: string) => `Summarise what has been learned about ${t} and link it to the next idea in the strand.`,
+];
+
+const SCHEME_QUESTIONS = [
+  (t: string) => `What do we understand by ${t}, and why is it important to learn it?`,
+  (t: string) => `What are the key steps to follow when working with ${t}?`,
+  (t: string) => `Where do we meet ${t} in real life, and how does it help us?`,
+  (t: string) => `What common errors happen with ${t}, and how can we check our work?`,
+  (t: string) => `How can we show ${t} using examples, symbols or diagrams?`,
+  (t: string) => `How is ${t} similar to, and different from, a related idea we already know?`,
+  (t: string) => `How do we explain ${t} in our own words using the correct vocabulary?`,
+  (t: string) => `What would be a good next step after practising ${t}?`,
+];
+
+const SCHEME_ATTITUDES = [
+  (t: string) => `Appreciate the value of ${t} in everyday problem-solving.`,
+  (t: string) => `Demonstrate curiosity when exploring ${t} in real-life situations.`,
+  (t: string) => `Show teamwork and respect for peers' ideas while working on ${t}.`,
+  (t: string) => `Develop accuracy and care when performing tasks involving ${t}.`,
+  (t: string) => `Cultivate a positive attitude toward practising ${t} regularly.`,
+  (t: string) => `Value the application of ${t} in community and school contexts.`,
+  (t: string) => `Show confidence when explaining ideas related to ${t} to others.`,
+  (t: string) => `Take responsibility for completing learning tasks on ${t} on time.`,
+];
+
+const SCHEME_ASSESSMENTS = [
+  "Oral questions during the lesson",
+  "Observation checklists and practical work",
+  "Written exercises and short quizzes",
+  "Peer and self-assessment",
+  "End-of-week revision and assessment",
+];
+
+const GROUP_MODES = ["individually", "in pairs", "in small groups", "as a whole class"];
+
+function lowerFirst(s: string): string {
+  return s.trim().replace(/^./, (c) => c.toLowerCase());
+}
+
+// Build exactly the suggested number of lesson rows for one subtopic. Each row
+// follows the KSA framework (Knowledge / Skill / Attitude), honours the
+// pedagogical progression, and varies content across lessons.
+export function buildSubtopicRows(sub: Subtopic, strand: string): SchemeRow[] {
+  const outcomes = sub.learningOutcomes;
+  const experiences = sub.suggestedExperiences && sub.suggestedExperiences.length > 0
+    ? sub.suggestedExperiences
+    : [
+        "Brainstorm the meaning of the concept using everyday examples",
+        "Apply the concept to guided practice examples",
+        "Use the concept to solve a real-life task and explain the method",
+      ];
+
+  const total = sub.lessonCount && sub.lessonCount > 0
+    ? sub.lessonCount
+    : Math.max(1, outcomes.length);
+
+  const t = sub.title.toLowerCase();
+  const rows: SchemeRow[] = [];
+  for (let i = 0; i < total; i++) {
+    const exp = lowerFirst(experiences[i % experiences.length]);
+    const groupMode = GROUP_MODES[i % GROUP_MODES.length];
+
+    rows.push({
+      week: 1,
+      lessonNumber: i + 1,
+      strand,
+      subtopic: sub.title,
+      learningOutcomes: [
+        `Knowledge: ${KNOWLEDGE_TEMPLATES[i % KNOWLEDGE_TEMPLATES.length](t)}`,
+        `Skill: ${exp.charAt(0).toUpperCase()}${exp.slice(1)}`,
+        `Attitude: ${SCHEME_ATTITUDES[i % SCHEME_ATTITUDES.length](t)}`,
+      ],
+      keyInquiryQuestions: [SCHEME_QUESTIONS[i % SCHEME_QUESTIONS.length](t)],
+      learningActivities: [`Learners ${exp}, working ${groupMode}.`],
+      resources: [...RESOURCES.slice(i % RESOURCES.length), ...RESOURCES.slice(0, i % RESOURCES.length)],
+      assessment: [SCHEME_ASSESSMENTS[i % SCHEME_ASSESSMENTS.length]],
+    });
+  }
+  return rows;
+}
+
+export function renumberSchemeRows(rows: SchemeRow[], lessonsPerWeek: number): SchemeRow[] {
+  const lpw = Math.max(1, lessonsPerWeek || 2);
+  return rows.map((r, i) => ({ ...r, lessonNumber: i + 1, week: Math.floor(i / lpw) + 1 }));
+}
+
 export function buildSchemeTemplate(opts: {
   gradeLevel: string;
   subject: string;
@@ -123,58 +217,14 @@ export function buildSchemeTemplate(opts: {
   const rows: SchemeRow[] = [];
 
   for (const sub of subtopics) {
-    const outcomes = sub.learningOutcomes;
-    const experiences = sub.suggestedExperiences && sub.suggestedExperiences.length > 0
-      ? sub.suggestedExperiences
-      : ["Class discussion and brainstorming", "Guided hands-on activity", "Group work and presentation"];
-
-    // Per subtopic lesson limit
-    const subtopicLimit = sub.lessonCount && sub.lessonCount > 0 
-      ? sub.lessonCount 
-      : Math.max(1, experiences.length, outcomes.length * 3);
-
-    // Build per-outcome lesson plan
-    for (let oi = 0; oi < outcomes.length; oi++) {
-      const outcome = outcomes[oi];
-      
-      // Derive 1-2 key inquiry questions from this specific outcome
-      const keyQuestions = deriveKeyQuestions(outcome, sub.title);
-      
-      // Allocate 1-3 lessons for this outcome (cap at 3)
-      const lessonsForOutcome = Math.min(3, Math.max(1, Math.ceil((experiences.length || 1) / outcomes.length)));
-      
-      for (let li = 0; li < lessonsForOutcome; li++) {
-        // Check subtopic lesson limit
-        const lessonsSoFarForSubtopic = rows.filter(r => r.subtopic === sub.title).length;
-        if (lessonsSoFarForSubtopic >= subtopicLimit) break;
-        
-        // Global lesson limit
-        if (rows.length >= maxTotalLessons) break;
-
-        // Pick the specific experience for this lesson
-        const expIdx = Math.min(oi + li, experiences.length - 1);
-        const lessonExperience = experiences[expIdx];
-        
-        // Derive key questions for this specific outcome (1-2)
-        const lessonQuestions = deriveKeyQuestions(outcome, sub.title).slice(0, 2);
-
-        rows.push({
-          week: Math.floor(rows.length / lessonsPerWeek) + 1,
-          lessonNumber: rows.length + 1,
-          strand: opts.strand,
-          subtopic: sub.title,
-          learningOutcomes: [outcomes[oi]],
-          keyInquiryQuestions: lessonQuestions,
-          learningActivities: [experiences[expIdx] || experiences[0]],
-          resources: RESOURCES.slice(0, 4),
-          assessment: ["Oral questions during the lesson", "Written exercises", "Revision and assessment at the end of every week"],
-        });
-      }
+    for (const r of buildSubtopicRows(sub, opts.strand)) {
+      if (rows.length >= maxTotalLessons) break;
+      rows.push(r);
     }
   }
 
-  // Don't force-fill weeks - return actual coverage
-  const actualWeeks = rows.length > 0 ? Math.max(...rows.map(r => r.week)) : 1;
+  const numbered = renumberSchemeRows(rows, lessonsPerWeek);
+  const actualWeeks = numbered.length > 0 ? Math.max(...numbered.map(r => r.week)) : 1;
 
   return {
     id: generateId(),
@@ -184,7 +234,7 @@ export function buildSchemeTemplate(opts: {
     strand: opts.strand,
     term: opts.term,
     year: opts.year,
-    rows,
+    rows: numbered,
     durationWeeks: Math.max(1, actualWeeks),
     createdAt: Date.now(),
   };

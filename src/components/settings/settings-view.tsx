@@ -2,8 +2,9 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Save, Database, Cpu, Globe, User as UserIcon, LogOut, RefreshCw, Loader2 } from "lucide-react";
+import { Save, Database, Cpu, Globe, User as UserIcon, LogOut, RefreshCw, Loader2, PlugZap } from "lucide-react";
 import { loadSettings, saveSettings, getDataMode, setDataMode, type DataMode } from "@/lib/settings";
+import { testLlmConnection } from "@/lib/client/api";
 import { supabaseConfigured } from "@/lib/db/supabase-client";
 import { pendingSyncCount, flushSyncQueue, pullDocuments } from "@/lib/offline/sync";
 import { useAuth } from "@/lib/auth/context";
@@ -32,6 +33,23 @@ export function SettingsView() {
   const [syncing, setSyncing] = React.useState(false);
   const [email, setEmail] = React.useState("");
   const [sending, setSending] = React.useState(false);
+  const [testing, setTesting] = React.useState(false);
+
+  const onTestConnection = async () => {
+    setTesting(true);
+    try {
+      const res = await testLlmConnection(settings);
+      if (res.ok) {
+        toast({ title: "Connection OK", description: `Reached ${res.model}. Sample reply: "${res.sample || "OK"}"` });
+      } else {
+        toast({ title: "Connection failed", description: res.error || "Unknown error", variant: "destructive" });
+      }
+    } catch (e) {
+      toast({ title: "Test failed", description: e instanceof Error ? e.message : "Could not reach the server", variant: "destructive" });
+    } finally {
+      setTesting(false);
+    }
+  };
 
   React.useEffect(() => {
     pendingSyncCount().then(setPending);
@@ -162,7 +180,7 @@ export function SettingsView() {
           <CardHeader>
             <CardTitle>AI Generation Engine</CardTitle>
             <CardDescription>
-              The offline template generator works with no keys. OpenAI or Anthropic give richer outputs.
+              The offline template generator works with no keys. Add an OpenAI, Anthropic, Gemini or OpenRouter key for richer, topic-specific output, then hit Test connection to confirm it works.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -214,7 +232,7 @@ export function SettingsView() {
                 </div>
                 <div className="space-y-1.5">
                   <Label>Model</Label>
-                  <Input value={settings.googleModel} onChange={(e) => update({ googleModel: e.target.value })} placeholder="gemini-1.5-flash" />
+                  <Input value={settings.googleModel} onChange={(e) => update({ googleModel: e.target.value })} placeholder="gemini-3.1-flash-lite" />
                 </div>
               </div>
             )}
@@ -227,7 +245,7 @@ export function SettingsView() {
                 </div>
                 <div className="space-y-1.5">
                   <Label>Model</Label>
-                  <Input value={settings.openrouterModel} onChange={(e) => update({ openrouterModel: e.target.value })} placeholder="google/gemini-flash-1.5" />
+                  <Input value={settings.openrouterModel} onChange={(e) => update({ openrouterModel: e.target.value })} placeholder="google/gemini-3.1-flash-lite" />
                 </div>
               </div>
             )}
@@ -258,7 +276,13 @@ export function SettingsView() {
             <p className="text-xs text-muted-foreground">
               API keys are stored in your browser only (localStorage) and sent to the provider when generating. Never shared.
             </p>
-            <Button onClick={onSave}><Save className="h-4 w-4" /> Save Generation Settings</Button>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={onSave}><Save className="h-4 w-4" /> Save Generation Settings</Button>
+              <Button variant="outline" onClick={onTestConnection} disabled={testing || settings.llmProvider === "offline"}>
+                {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlugZap className="h-4 w-4" />}
+                {testing ? "Testing…" : "Test connection"}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </TabsContent>

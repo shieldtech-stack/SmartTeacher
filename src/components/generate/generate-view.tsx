@@ -73,68 +73,62 @@ export function GenerateView() {
       const settings = loadSettings();
       const ctx = await buildContext();
       setContext(ctx);
-      const payload = { selection, subtopics, settings, context: ctx };
+      const pay = { selection, settings, context: ctx };
 
       if (target === "scheme") {
-        const scheme = await generateScheme(payload);
+        const scheme = await generateScheme({ ...pay, subtopics });
         await saveScheme(scheme);
         await syncDocument("scheme", scheme);
-        toast({ title: "Scheme of Work ready", description: `${scheme.rows.length} lessons generated.` });
+        toast(
+          scheme.llmSource === "ai"
+            ? { title: "Scheme of Work ready", description: `${scheme.rows.length} lessons generated with AI.` }
+            : { title: "Scheme of Work ready (template)", description: `${scheme.rows.length} lessons from the offline template.` }
+        );
+        if (scheme.llmError) {
+          toast({ title: "AI generation failed", description: scheme.llmError, variant: "destructive" });
+        }
         router.push(`/scheme/${scheme.id}`);
       } else if (target === "plan") {
-        // First ensure we have a scheme with lessons
-        let scheme;
-        const existingScheme = selection.subtopicIds.length ? null : null; // We'll load from DB if needed
-        
-        // Get the scheme - if not already generated, generate it first
-        const schemePayload = { ...payload, subtopics: payload.subtopics.filter(s => payload.selection.subtopicIds.includes(s.id)) };
-        const schemeResult = await generateScheme({ ...payload, subtopics: subtopics.filter(s => selection.subtopicIds.includes(s.id)) });
-        
-        // For each lesson in the scheme, generate a lesson plan
+        // One lesson plan per selected subtopic - bounded, fast, no full scheme required
         const plans = [];
-        for (const row of schemeResult.rows) {
-          // Create a subtopic-like object for this specific lesson/outcome
-          const lessonSubtopic = {
-            id: `lesson-${row.lessonNumber}`,
-            strandId: selection.strandId,
-            title: row.subtopic,
-            learningOutcomes: row.learningOutcomes,
-            suggestedExperiences: row.learningActivities,
-            lessonCount: 1,
-          };
-          
-          const lessonPayload = { ...payload, subtopics: [lessonSubtopic], selection: { ...selection, subtopicIds: [lessonSubtopic.id] } };
-          const plan = await generateLessonPlan(lessonPayload);
+        let templateCount = 0;
+        for (const subtopic of subtopics) {
+          const plan = await generateLessonPlan({ ...pay, subtopics: [subtopic] });
           await savePlan(plan);
           await syncDocument("plan", plan);
+          if (plan.llmSource !== "ai") templateCount++;
           plans.push(plan);
         }
-        
-        toast({ title: "Lesson Plans ready", description: `${plans.length} lesson plans generated (one per lesson).` });
+        const firstTemplate = plans.find((p) => p.llmError) as { llmError?: string } | undefined;
+        toast(
+          templateCount === 0
+            ? { title: "Lesson Plans ready", description: `${plans.length} plan(s) generated with AI.` }
+            : { title: "Lesson Plans ready", description: `${plans.length} plan(s); ${templateCount} used the offline template.` }
+        );
+        if (firstTemplate?.llmError) {
+          toast({ title: "AI generation failed", description: firstTemplate.llmError, variant: "destructive" });
+        }
         if (plans.length > 0) router.push(`/plan/${plans[0].id}`);
       } else {
-        // Generate lesson notes for each lesson in the scheme
-        const schemeResult = await generateScheme({ ...payload, subtopics: subtopics.filter(s => selection.subtopicIds.includes(s.id)) });
-        
+        // One lesson note per selected subtopic - bounded, fast, no full scheme required
         const notes = [];
-        for (const row of schemeResult.rows) {
-          const lessonSubtopic = {
-            id: `lesson-${row.lessonNumber}`,
-            strandId: selection.strandId,
-            title: row.subtopic,
-            learningOutcomes: row.learningOutcomes,
-            suggestedExperiences: row.learningActivities,
-            lessonCount: 1,
-          };
-          
-          const lessonPayload = { ...payload, subtopics: [lessonSubtopic], selection: { ...selection, subtopicIds: [lessonSubtopic.id] } };
-          const note = await generateLessonNotes(lessonPayload);
+        let templateCount = 0;
+        for (const subtopic of subtopics) {
+          const note = await generateLessonNotes({ ...pay, subtopics: [subtopic] });
           await saveNote(note);
           await syncDocument("note", note);
+          if (note.llmSource !== "ai") templateCount++;
           notes.push(note);
         }
-        
-        toast({ title: "Lesson Notes ready", description: `${notes.length} lesson notes generated (one per lesson).` });
+        const firstTemplate = notes.find((n) => n.llmError) as { llmError?: string } | undefined;
+        toast(
+          templateCount === 0
+            ? { title: "Lesson Notes ready", description: `${notes.length} note(s) generated with AI.` }
+            : { title: "Lesson Notes ready", description: `${notes.length} note(s); ${templateCount} used the offline template.` }
+        );
+        if (firstTemplate?.llmError) {
+          toast({ title: "AI generation failed", description: firstTemplate.llmError, variant: "destructive" });
+        }
         if (notes.length > 0) router.push(`/notes/${notes[0].id}`);
       }
     } catch (e) {

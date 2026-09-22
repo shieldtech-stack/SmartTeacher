@@ -42,6 +42,38 @@ export function parseJsonLoose<T>(text: string): T | null {
   }
 }
 
+// Fallback chain for Google Gemini: older models get restricted or retired over
+// time, so if the configured model is unavailable we retry with current options.
+const GOOGLE_MODEL_FALLBACKS = [
+  "gemini-3.1-flash-lite",
+  "gemini-3.5-flash",
+  "gemini-3-flash-preview",
+  "gemini-2.5-flash",
+];
+
+async function googleGenerateContent(
+  model: string,
+  apiKey: string,
+  body: Record<string, unknown>
+): Promise<{ ok: true; text: string } | { ok: false; retry: boolean; message: string }> {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    // 404 = model not found/retired; 429 = per-model quota — both worth retrying with another model.
+    const retry = res.status === 404 || res.status === 429;
+    return { ok: false, retry, message: `Google API error ${res.status}: ${text}` };
+  }
+  const data = (await res.json()) as { candidates?: { content?: { parts?: Array<{ text?: string }> } }[] };
+  return { ok: true, text: data.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "" };
+}
+
 export async function callLlm(opts: LlmCallOptions): Promise<string> {
   if (opts.provider === "anthropic") {
     if (!opts.anthropicKey) throw new Error("Anthropic API key is not configured");
@@ -78,17 +110,17 @@ export async function callLlm(opts: LlmCallOptions): Promise<string> {
         responseMimeType: opts.expectJson ? "application/json" : "text/plain",
       },
     };
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${opts.googleModel}:generateContent?key=${opts.googleKey}`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      }
-    );
-    if (!res.ok) throw new Error(`Google API error ${res.status}: ${await res.text()}`);
-    const data = (await res.json()) as { candidates?: { content?: { parts?: Array<{ text?: string }> } }[] };
-    return data.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
+    const configured = opts.googleModel || GOOGLE_MODEL_FALLBACKS[0];
+    const candidates = [configured, ...GOOGLE_MODEL_FALLBACKS.filter((m) => m !== configured)];
+    let firstError: string | null = null;
+    for (const model of candidates) {
+      const out = await googleGenerateContent(model, opts.googleKey, body);
+      if (out.ok) return out.text;
+      // Auth errors (401/403) are not model problems — fail fast, don't waste calls.
+      if (!out.retry) throw new Error(out.message);
+      firstError ??= out.message;
+    }
+    throw new Error(firstError || "Google API error");
   }
 
   if (opts.provider === "openrouter") {

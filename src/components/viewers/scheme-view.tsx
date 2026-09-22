@@ -46,6 +46,9 @@ export function SchemeView({ id }: { id: string }) {
             <Badge variant="secondary">{scheme.strand}</Badge>
             <Badge variant="secondary">{scheme.term} {scheme.year}</Badge>
             <Badge variant="secondary">{scheme.durationWeeks} weeks</Badge>
+            <Badge variant={scheme.llmSource === "ai" ? "success" : "outline"}>
+              {scheme.llmSource === "ai" ? "AI generated" : "Offline template"}
+            </Badge>
             <span className="text-xs text-muted-foreground">Created {formatDate(scheme.createdAt)}</span>
           </div>
         </div>

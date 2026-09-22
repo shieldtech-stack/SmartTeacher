@@ -77,6 +77,9 @@ export function NotesView({ id }: { id: string }) {
           <div className="mt-2 flex flex-wrap gap-2">
             <Badge variant="secondary">{note.subject}</Badge>
             <Badge variant="secondary">{note.gradeLevel}</Badge>
+            <Badge variant={note.llmSource === "ai" ? "success" : "outline"}>
+              {note.llmSource === "ai" ? "AI generated" : "Offline template"}
+            </Badge>
             <span className="text-xs text-muted-foreground">Created {formatDate(note.createdAt)}</span>
           </div>
         </div>
