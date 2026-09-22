@@ -140,9 +140,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             })}
           </div>
         </div>
-      </nav>
+</nav>
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-10 pt-6">{children}</main>
+
+      <footer className="no-print border-t">
+        <p className="mx-auto w-full max-w-6xl px-4 py-2 text-center text-xs text-muted-foreground">
+          Powered by Shield Enterprise @ 2026
+        </p>
+      </footer>
     </div>
   );
 }
